@@ -1,0 +1,39 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  html {
+    font-size: 16px;
+  }
+
+  body {
+    @apply bg-slate-50 text-base leading-normal text-slate-900 antialiased;
+  }
+}
+
+/* Logged-in app: one readable size for all roles (inputs, tables, labels). */
+@layer components {
+  .app-shell {
+    @apply text-base;
+  }
+
+  .app-shell :is(input, select, textarea, button) {
+    @apply text-base;
+  }
+
+  .app-shell table {
+    @apply text-base;
+  }
+
+  /* Use raw sizes — @apply text-sm/text-base here causes circular deps with these selectors */
+  .app-shell .text-xs {
+    font-size: 0.875rem;
+    line-height: 1.25rem;
+  }
+
+  .app-shell .text-sm {
+    font-size: 1rem;
+    line-height: 1.5rem;
+  }
+}
