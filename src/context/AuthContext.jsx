@@ -90,112 +90,178 @@ import {
   useState,
 } from "react";
 
-import { api, setAccessToken } from "../api/client.js";
+import {
+  api,
+  setAccessToken,
+} from "../api/client.js";
 
-const AuthContext = createContext(null);
+const AuthContext =
+  createContext(null);
 
-export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null);
-  const [loading, setLoading] = useState(true);
+export function AuthProvider({
+  children,
+}) {
+  const [user, setUser] =
+    useState(null);
 
-  // --------------------------------------------------
-  // LOAD CURRENT USER
-  // --------------------------------------------------
+  const [loading, setLoading] =
+    useState(true);
 
-  const loadMe = useCallback(async () => {
-    const token = localStorage.getItem("accessToken");
 
-    // No token means user is not logged in
-    if (!token) {
-      setUser(null);
-      setLoading(false);
-      return;
-    }
+  /*
+  |--------------------------------------------------------------------------
+  | LOAD CURRENT USER
+  |--------------------------------------------------------------------------
+  */
 
-    try {
-      console.log("Checking current authenticated user...");
+  const loadMe =
+    useCallback(async () => {
+      const token =
+        localStorage.getItem(
+          "accessToken"
+        );
 
-      const { data } = await api.get("/auth/me");
-
-      if (data?.success && data?.user) {
-        setUser(data.user);
-      } else {
+      if (!token) {
         setUser(null);
-        setAccessToken(null);
+        setLoading(false);
+        return;
       }
 
-    } catch (error) {
-      console.warn(
-        "Current token is invalid or expired. Attempting refresh..."
-      );
-
       try {
-        const { data } = await api.post("/auth/refresh");
+        const { data } =
+          await api.get(
+            "/auth/me"
+          );
 
-        if (data?.accessToken) {
-          setAccessToken(data.accessToken);
-
-          const meResponse = await api.get("/auth/me");
-
-          if (
-            meResponse.data?.success &&
-            meResponse.data?.user
-          ) {
-            setUser(meResponse.data.user);
-          } else {
-            setUser(null);
-            setAccessToken(null);
-          }
-
+        if (
+          data?.success &&
+          data?.user
+        ) {
+          setUser(data.user);
         } else {
           setUser(null);
           setAccessToken(null);
         }
 
-      } catch (refreshError) {
-        console.error(
-          "Unable to refresh authentication:",
-          refreshError
+      } catch (error) {
+        console.warn(
+          "Authentication check failed. Trying refresh..."
         );
 
-        setUser(null);
-        setAccessToken(null);
+        try {
+          const { data } =
+            await api.post(
+              "/auth/refresh"
+            );
+
+          if (
+            data?.accessToken
+          ) {
+            setAccessToken(
+              data.accessToken
+            );
+
+            const me =
+              await api.get(
+                "/auth/me"
+              );
+
+            if (
+              me.data?.success &&
+              me.data?.user
+            ) {
+              setUser(
+                me.data.user
+              );
+            } else {
+              setUser(null);
+              setAccessToken(null);
+            }
+
+          } else {
+            setUser(null);
+            setAccessToken(null);
+          }
+
+        } catch (refreshError) {
+          console.error(
+            "Refresh failed:",
+            refreshError
+          );
+
+          setUser(null);
+          setAccessToken(null);
+        }
+      } finally {
+        setLoading(false);
       }
+    }, []);
 
-    } finally {
-      setLoading(false);
-    }
-  }, []);
 
-  // --------------------------------------------------
-  // INITIAL AUTHENTICATION CHECK
-  // --------------------------------------------------
+  /*
+  |--------------------------------------------------------------------------
+  | INITIAL AUTH CHECK
+  |--------------------------------------------------------------------------
+  */
 
   useEffect(() => {
     loadMe();
   }, [loadMe]);
 
-  // --------------------------------------------------
-  // LOGIN
-  // --------------------------------------------------
 
-  const login = async (email, password) => {
+  /*
+  |--------------------------------------------------------------------------
+  | LOGIN
+  |--------------------------------------------------------------------------
+  */
+
+  const login = async (
+    email,
+    password
+  ) => {
     try {
-      console.log("=================================");
-      console.log("HMS LOGIN");
-      console.log("Email:", email);
-      console.log("API:", api.defaults.baseURL);
-      console.log("=================================");
+      console.log(
+        "======================================"
+      );
 
-      const { data } = await api.post("/auth/login", {
-        email,
-        password,
-      });
+      console.log(
+        "LOGIN REQUEST"
+      );
 
-      console.log("Login response:", data);
+      console.log(
+        "Email:",
+        email
+      );
 
-      if (data?.accessToken) {
-        setAccessToken(data.accessToken);
+      console.log(
+        "API:",
+        api.defaults.baseURL
+      );
+
+      console.log(
+        "======================================"
+      );
+
+      const { data } =
+        await api.post(
+          "/auth/login",
+          {
+            email,
+            password,
+          }
+        );
+
+      console.log(
+        "LOGIN RESPONSE:",
+        data
+      );
+
+      if (
+        data?.accessToken
+      ) {
+        setAccessToken(
+          data.accessToken
+        );
       }
 
       if (data?.user) {
@@ -205,9 +271,17 @@ export function AuthProvider({ children }) {
       return data;
 
     } catch (error) {
-      console.error("=================================");
-      console.error("HMS LOGIN FAILED");
-      console.error("=================================");
+      console.error(
+        "======================================"
+      );
+
+      console.error(
+        "LOGIN FAILED"
+      );
+
+      console.error(
+        "======================================"
+      );
 
       console.error(
         "Status:",
@@ -220,7 +294,7 @@ export function AuthProvider({ children }) {
       );
 
       console.error(
-        "Request URL:",
+        "URL:",
         error.config?.url
       );
 
@@ -230,14 +304,7 @@ export function AuthProvider({ children }) {
       );
 
       console.error(
-        "Full URL:",
-        error.config?.baseURL
-          ? `${error.config.baseURL}${error.config.url}`
-          : "Unknown"
-      );
-
-      console.error(
-        "Error:",
+        "Message:",
         error.message
       );
 
@@ -245,56 +312,77 @@ export function AuthProvider({ children }) {
     }
   };
 
-  // --------------------------------------------------
-  // LOGOUT
-  // --------------------------------------------------
 
-  const logout = async () => {
-    try {
-      await api.post("/auth/logout");
-    } catch (error) {
-      console.warn(
-        "Logout request failed:",
-        error.message
-      );
-    }
+  /*
+  |--------------------------------------------------------------------------
+  | LOGOUT
+  |--------------------------------------------------------------------------
+  */
 
-    setAccessToken(null);
-    setUser(null);
-  };
+  const logout =
+    async () => {
+      try {
+        await api.post(
+          "/auth/logout"
+        );
+      } catch (error) {
+        console.warn(
+          "Logout failed:",
+          error.message
+        );
+      }
 
-  // --------------------------------------------------
-  // CONTEXT VALUE
-  // --------------------------------------------------
+      setAccessToken(null);
+      setUser(null);
+    };
 
-  const value = useMemo(
-    () => ({
-      user,
-      loading,
-      isAuthenticated: !!user,
-      login,
-      logout,
-      refreshUser: loadMe,
-    }),
-    [user, loading, loadMe]
-  );
+
+  /*
+  |--------------------------------------------------------------------------
+  | CONTEXT
+  |--------------------------------------------------------------------------
+  */
+
+  const value =
+    useMemo(
+      () => ({
+        user,
+        loading,
+        isAuthenticated:
+          !!user,
+        login,
+        logout,
+        refreshUser:
+          loadMe,
+      }),
+      [
+        user,
+        loading,
+        loadMe,
+      ]
+    );
+
 
   return (
-    <AuthContext.Provider value={value}>
+    <AuthContext.Provider
+      value={value}
+    >
       {children}
     </AuthContext.Provider>
   );
 }
 
-// --------------------------------------------------
-// USE AUTH HOOK
-// --------------------------------------------------
 
 export function useAuth() {
-  const ctx = useContext(AuthContext);
+  const ctx =
+    useContext(
+      AuthContext
+    );
 
   if (!ctx) {
-    throw new Error("useAuth outside provider");
+    throw new Error(
+      "useAuth outside provider"
+    );
   }
 
   return ctx;

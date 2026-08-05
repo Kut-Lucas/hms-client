@@ -53,21 +53,6 @@
 
 import axios from "axios";
 
-/*
-|--------------------------------------------------------------------------
-| API BASE URL
-|--------------------------------------------------------------------------
-|
-| Production backend:
-| https://hms-server-odkt.onrender.com/api
-|
-| Local development backend:
-| http://localhost:5000/api
-|
-| VITE_API_URL from Render takes priority.
-|
-*/
-
 const baseURL =
   import.meta.env.VITE_API_URL ||
   (import.meta.env.PROD
@@ -75,23 +60,19 @@ const baseURL =
     : "http://localhost:5000/api");
 
 console.log("======================================");
-console.log("HMS API CONFIGURATION");
+console.log("HMS API");
 console.log("Environment:", import.meta.env.MODE);
-console.log("Production:", import.meta.env.PROD);
-console.log("API Base URL:", baseURL);
+console.log("API URL:", baseURL);
 console.log("======================================");
 
-
-/*
-|--------------------------------------------------------------------------
-| AXIOS INSTANCE
-|--------------------------------------------------------------------------
-*/
 
 export const api = axios.create({
   baseURL,
 
-  // Required because your backend uses credentials/cookies
+  /*
+   * Keep this enabled because your authentication
+   * system may use cookies for refresh/logout.
+   */
   withCredentials: true,
 
   headers: {
@@ -107,32 +88,29 @@ export const api = axios.create({
 |--------------------------------------------------------------------------
 | REQUEST INTERCEPTOR
 |--------------------------------------------------------------------------
-|
-| Automatically attaches the access token to every protected request.
-|
 */
 
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem("accessToken");
+    const token =
+      localStorage.getItem("accessToken");
 
     if (token) {
-      config.headers = config.headers || {};
+      config.headers =
+        config.headers || {};
 
-      config.headers.Authorization = `Bearer ${token}`;
+      config.headers.Authorization =
+        `Bearer ${token}`;
     }
 
-    // Useful for debugging
     console.log(
-      `[API REQUEST] ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`
+      `[REQUEST] ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`
     );
 
     return config;
   },
 
   (error) => {
-    console.error("[API REQUEST ERROR]", error);
-
     return Promise.reject(error);
   }
 );
@@ -140,141 +118,90 @@ api.interceptors.request.use(
 
 /*
 |--------------------------------------------------------------------------
-| TOKEN REFRESH MANAGEMENT
+| RESPONSE INTERCEPTOR
 |--------------------------------------------------------------------------
-|
-| Prevents multiple simultaneous refresh requests.
-|
 */
 
 let refreshing = null;
 
-
-/*
-|--------------------------------------------------------------------------
-| RESPONSE INTERCEPTOR
-|--------------------------------------------------------------------------
-|
-| If a protected request returns 401:
-|
-| 1. Try /auth/refresh
-| 2. Save the new access token
-| 3. Retry the original request
-|
-| Login and refresh requests are excluded to prevent loops.
-|
-*/
-
 api.interceptors.response.use(
   (response) => {
     console.log(
-      `[API RESPONSE] ${response.status} ${response.config.method?.toUpperCase()} ${response.config.url}`
+      `[RESPONSE] ${response.status} ${response.config.url}`
     );
 
     return response;
   },
 
   async (error) => {
-    const originalRequest = error.config;
+    const originalRequest =
+      error.config;
 
     /*
-    |--------------------------------------------------------------------------
-    | NETWORK ERROR
-    |--------------------------------------------------------------------------
-    */
-
+     * Network error
+     */
     if (!error.response) {
-      console.error("======================================");
-      console.error("HMS API NETWORK ERROR");
-      console.error("======================================");
-      console.error("Message:", error.message);
-      console.error("Base URL:", error.config?.baseURL);
-      console.error("URL:", error.config?.url);
       console.error(
-        "Full URL:",
-        error.config?.baseURL
-          ? `${error.config.baseURL}${error.config.url}`
-          : "Unknown"
+        "NETWORK ERROR:",
+        error.message
       );
 
       return Promise.reject(error);
     }
 
-    const status = error.response.status;
-
-    console.error("======================================");
-    console.error("HMS API ERROR");
-    console.error("======================================");
-    console.error("Status:", status);
-    console.error("Message:", error.message);
-    console.error("URL:", error.config?.url);
-    console.error("Response:", error.response?.data);
-    console.error("======================================");
-
+    const status =
+      error.response.status;
 
     /*
-    |--------------------------------------------------------------------------
-    | NEVER REFRESH AFTER LOGIN FAILURE
-    |--------------------------------------------------------------------------
-    */
-
-    if (originalRequest?.url?.includes("/auth/login")) {
+     * NEVER refresh after login failure
+     */
+    if (
+      originalRequest?.url?.includes(
+        "/auth/login"
+      )
+    ) {
       return Promise.reject(error);
     }
 
-
     /*
-    |--------------------------------------------------------------------------
-    | NEVER REFRESH THE REFRESH REQUEST
-    |--------------------------------------------------------------------------
-    */
-
-    if (originalRequest?.url?.includes("/auth/refresh")) {
-      localStorage.removeItem("accessToken");
+     * NEVER refresh the refresh request
+     */
+    if (
+      originalRequest?.url?.includes(
+        "/auth/refresh"
+      )
+    ) {
+      localStorage.removeItem(
+        "accessToken"
+      );
 
       return Promise.reject(error);
     }
 
-
     /*
-    |--------------------------------------------------------------------------
-    | ONLY REFRESH ON 401
-    |--------------------------------------------------------------------------
-    */
-
+     * Only refresh on 401
+     */
     if (status !== 401) {
       return Promise.reject(error);
     }
 
-
     /*
-    |--------------------------------------------------------------------------
-    | PREVENT INFINITE RETRY LOOP
-    |--------------------------------------------------------------------------
-    */
-
+     * Prevent infinite retry
+     */
     if (originalRequest._retry) {
-      localStorage.removeItem("accessToken");
+      localStorage.removeItem(
+        "accessToken"
+      );
 
       return Promise.reject(error);
     }
 
     originalRequest._retry = true;
 
-
-    /*
-    |--------------------------------------------------------------------------
-    | REFRESH TOKEN
-    |--------------------------------------------------------------------------
-    */
-
     try {
       /*
-      |--------------------------------------------------------------
-      | If another request is already refreshing, wait for it.
-      |--------------------------------------------------------------
-      */
-
+       * Only make one refresh request
+       */
       if (!refreshing) {
         refreshing = api
           .post("/auth/refresh")
@@ -283,109 +210,47 @@ api.interceptors.response.use(
           });
       }
 
-
-      /*
-      |--------------------------------------------------------------
-      | Wait for refresh request
-      |--------------------------------------------------------------
-      */
-
-      const { data } = await refreshing;
-
-
-      /*
-      |--------------------------------------------------------------
-      | Make sure a new token was returned
-      |--------------------------------------------------------------
-      */
+      const { data } =
+        await refreshing;
 
       if (!data?.accessToken) {
-        console.error(
-          "Token refresh succeeded but no accessToken was returned."
+        localStorage.removeItem(
+          "accessToken"
         );
-
-        localStorage.removeItem("accessToken");
 
         return Promise.reject(error);
       }
 
-
       /*
-      |--------------------------------------------------------------
-      | Save new token
-      |--------------------------------------------------------------
-      */
-
+       * Save new token
+       */
       localStorage.setItem(
         "accessToken",
         data.accessToken
       );
 
-
       /*
-      |--------------------------------------------------------------
-      | Add new token to original request
-      |--------------------------------------------------------------
-      */
-
+       * Attach new token
+       */
       originalRequest.headers =
         originalRequest.headers || {};
 
       originalRequest.headers.Authorization =
         `Bearer ${data.accessToken}`;
 
-
       /*
-      |--------------------------------------------------------------
-      | Retry original request
-      |--------------------------------------------------------------
-      */
-
-      console.log(
-        "[AUTH] Retrying request with refreshed access token:",
-        originalRequest.url
-      );
-
+       * Retry original request
+       */
       return api(originalRequest);
 
     } catch (refreshError) {
-      console.error(
-        "======================================"
+      localStorage.removeItem(
+        "accessToken"
       );
 
-      console.error(
-        "TOKEN REFRESH FAILED"
+      return Promise.reject(
+        refreshError
       );
-
-      console.error(
-        "======================================"
-      );
-
-      console.error(
-        "Status:",
-        refreshError.response?.status
-      );
-
-      console.error(
-        "Response:",
-        refreshError.response?.data
-      );
-
-      console.error(
-        "Message:",
-        refreshError.message
-      );
-
-
-      /*
-      |--------------------------------------------------------------
-      | Remove invalid token
-      |--------------------------------------------------------------
-      */
-
-      localStorage.removeItem("accessToken");
-
-      return Promise.reject(refreshError);
     }
   }
 );
@@ -393,11 +258,8 @@ api.interceptors.response.use(
 
 /*
 |--------------------------------------------------------------------------
-| ACCESS TOKEN HELPER
+| ACCESS TOKEN
 |--------------------------------------------------------------------------
-|
-| Used by AuthContext.
-|
 */
 
 export function setAccessToken(token) {
@@ -411,18 +273,4 @@ export function setAccessToken(token) {
       "accessToken"
     );
   }
-}
-
-
-/*
-|--------------------------------------------------------------------------
-| GET CURRENT API URL
-|--------------------------------------------------------------------------
-|
-| Optional helper useful for debugging.
-|
-*/
-
-export function getApiBaseUrl() {
-  return baseURL;
 }
