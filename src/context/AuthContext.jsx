@@ -298,13 +298,25 @@
 //   return ctx;
 // }
 
-import React, { createContext, useContext, useState, useEffect } from "react";
-import client from "../api/client"; // adjust path to your client.js
 
-const API_URL =
-  process.env.REACT_APP_API_URL || "https://hms-server-odkt.onrender.com/api";
+// src/context/AuthContext.jsx
 
-const AuthContext = createContext();
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useEffect,
+} from "react";
+
+import client from "../api/client";
+
+const AuthContext = createContext(null);
+
+/*
+|--------------------------------------------------------------------------
+| AUTH PROVIDER
+|--------------------------------------------------------------------------
+*/
 
 export const AuthProvider = ({ children }) => {
   const [authState, setAuthState] = useState({
@@ -314,130 +326,406 @@ export const AuthProvider = ({ children }) => {
     isLoading: true,
   });
 
-  // On mount, restore token from localStorage
+  /*
+  |--------------------------------------------------------------------------
+  | RESTORE LOGIN SESSION
+  |--------------------------------------------------------------------------
+  */
+
   useEffect(() => {
-    const token = localStorage.getItem("accessToken");
-    const user = localStorage.getItem("user");
-    if (token && user) {
+    const restoreSession = () => {
       try {
+        const token = localStorage.getItem("accessToken");
+        const user = localStorage.getItem("user");
+
+        if (!token || !user) {
+          setAuthState({
+            user: null,
+            token: null,
+            isAuthenticated: false,
+            isLoading: false,
+          });
+
+          return;
+        }
+
         const parsedUser = JSON.parse(user);
-        client.defaults.headers.common["Authorization"] = `Bearer ${token}`;
+
+        client.defaults.headers.common.Authorization =
+          `Bearer ${token}`;
+
         setAuthState({
           user: parsedUser,
           token,
           isAuthenticated: true,
           isLoading: false,
         });
-      } catch (e) {
-        console.error("Failed to restore auth state", e);
-        setAuthState((prev) => ({ ...prev, isLoading: false }));
+
+        console.log("[AUTH] Session restored");
+      } catch (error) {
+        console.error(
+          "[AUTH] Failed to restore session:",
+          error
+        );
+
+        localStorage.removeItem("accessToken");
+        localStorage.removeItem("user");
+
+        delete client.defaults.headers.common.Authorization;
+
+        setAuthState({
+          user: null,
+          token: null,
+          isAuthenticated: false,
+          isLoading: false,
+        });
       }
-    } else {
-      setAuthState((prev) => ({ ...prev, isLoading: false }));
-    }
+    };
+
+    restoreSession();
   }, []);
 
+  /*
+  |--------------------------------------------------------------------------
+  | LOGIN
+  |--------------------------------------------------------------------------
+  */
+
   const login = async (email, password) => {
+    const cleanEmail = email.trim().toLowerCase();
+
     console.log("======================================");
-    console.log("LOGIN REQUEST");
-    console.log("Email:", email);
-    console.log("API:", API_URL);
+    console.log("HMS LOGIN");
+    console.log("======================================");
+    console.log("Email:", cleanEmail);
+    console.log(
+      "API:",
+      client.defaults.baseURL
+    );
+    console.log("Endpoint:", "/auth/login");
     console.log("======================================");
 
     try {
-      // --- Warm up the server (health check) to wake it from cold start ---
-      try {
-        await client.get("/health", { timeout: 5000 });
-        console.log("[HEALTH] Server responded quickly");
-      } catch (pingError) {
-        // Ignore – the server might still be waking up, and the actual login will retry
-        console.log(
-          "[HEALTH] Ping failed or timed out – server may be waking up",
+      const startTime = Date.now();
+
+      /*
+      |--------------------------------------------------------------------------
+      | LOGIN REQUEST
+      |--------------------------------------------------------------------------
+      */
+
+      const response = await client.post(
+        "/auth/login",
+        {
+          email: cleanEmail,
+          password,
+        },
+        {
+          timeout: 30000,
+        }
+      );
+
+      const elapsed =
+        Date.now() - startTime;
+
+      console.log(
+        `[LOGIN] Server responded in ${elapsed}ms`
+      );
+
+      console.log(
+        "[LOGIN] Response:",
+        response.data
+      );
+
+      /*
+      |--------------------------------------------------------------------------
+      | EXTRACT RESPONSE
+      |--------------------------------------------------------------------------
+      */
+
+      const {
+        accessToken,
+        token,
+        user,
+      } = response.data;
+
+      const finalToken =
+        accessToken || token;
+
+      /*
+      |--------------------------------------------------------------------------
+      | VALIDATE SERVER RESPONSE
+      |--------------------------------------------------------------------------
+      */
+
+      if (!finalToken) {
+        console.error(
+          "[LOGIN] Server did not return an access token"
+        );
+
+        throw new Error(
+          "Login succeeded but the server did not return an authentication token."
         );
       }
 
-      // --- Actual login request ---
-      const response = await client.post("/auth/login", { email, password });
+      if (!user) {
+        console.error(
+          "[LOGIN] Server did not return user information"
+        );
 
-      const { accessToken, user } = response.data;
+        throw new Error(
+          "Login succeeded but no user information was returned."
+        );
+      }
 
-      // Save token and user
-      localStorage.setItem("accessToken", accessToken);
-      localStorage.setItem("user", JSON.stringify(user));
+      /*
+      |--------------------------------------------------------------------------
+      | SAVE SESSION
+      |--------------------------------------------------------------------------
+      */
 
-      // Set axios default header
-      client.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
+      localStorage.setItem(
+        "accessToken",
+        finalToken
+      );
+
+      localStorage.setItem(
+        "user",
+        JSON.stringify(user)
+      );
+
+      client.defaults.headers.common.Authorization =
+        `Bearer ${finalToken}`;
+
+      /*
+      |--------------------------------------------------------------------------
+      | UPDATE AUTH STATE
+      |--------------------------------------------------------------------------
+      */
 
       setAuthState({
         user,
-        token: accessToken,
+        token: finalToken,
         isAuthenticated: true,
         isLoading: false,
       });
 
+      console.log("======================================");
       console.log("LOGIN SUCCESS");
-      return { success: true, user };
-    } catch (error) {
-      console.log("======================================");
-      console.log("LOGIN FAILED");
-      console.log("======================================");
-      console.log("Status:", error.response?.status);
-      console.log("Response:", error.response?.data);
-      console.log("URL:", error.config?.url);
-      console.log("Base URL:", error.config?.baseURL);
-      console.log("Message:", error.message);
+      console.log("User:", user);
+      console.log(
+        "Time:",
+        `${elapsed}ms`
+      );
       console.log("======================================");
 
-      let errorMessage = "Login failed. Please try again.";
-      if (error.code === "ECONNABORTED" || error.message.includes("timeout")) {
-        errorMessage =
-          "The server is waking up. Please wait a moment and try again.";
-      } else if (error.response?.data?.message) {
-        errorMessage = error.response.data.message;
+      return {
+        success: true,
+        user,
+      };
+    } catch (error) {
+      console.error("======================================");
+      console.error("LOGIN FAILED");
+      console.error("======================================");
+
+      console.error(
+        "Error name:",
+        error.name
+      );
+
+      console.error(
+        "Error code:",
+        error.code
+      );
+
+      console.error(
+        "Message:",
+        error.message
+      );
+
+      console.error(
+        "URL:",
+        error.config?.url
+      );
+
+      console.error(
+        "Base URL:",
+        error.config?.baseURL
+      );
+
+      console.error(
+        "HTTP status:",
+        error.response?.status
+      );
+
+      console.error(
+        "Server response:",
+        error.response?.data
+      );
+
+      console.error("======================================");
+
+      /*
+      |--------------------------------------------------------------------------
+      | USER-FRIENDLY ERROR
+      |--------------------------------------------------------------------------
+      */
+
+      let message =
+        "Unable to login. Please try again.";
+
+      if (
+        error.code === "ECONNABORTED" ||
+        error.code === "ETIMEDOUT" ||
+        error.message?.toLowerCase().includes("timeout")
+      ) {
+        message =
+          "The server took too long to respond. Please try again in a few seconds.";
+      } else if (
+        error.response?.status === 401
+      ) {
+        message =
+          error.response?.data?.message ||
+          "Invalid email or password.";
+      } else if (
+        error.response?.status === 403
+      ) {
+        message =
+          error.response?.data?.message ||
+          "Your account is not allowed to login.";
+      } else if (
+        error.response?.status >= 500
+      ) {
+        message =
+          "The hospital server encountered an error. Please try again.";
+      } else if (
+        error.response?.data?.message
+      ) {
+        message =
+          error.response.data.message;
       }
 
-      throw new Error(errorMessage);
+      throw new Error(message);
     }
   };
 
+  /*
+  |--------------------------------------------------------------------------
+  | LOGOUT
+  |--------------------------------------------------------------------------
+  */
+
   const logout = async () => {
     try {
-      await client.post("/auth/logout");
-    } catch (e) {
-      console.error("Logout API error:", e);
+      await client.post(
+        "/auth/logout",
+        {},
+        {
+          timeout: 10000,
+        }
+      );
+    } catch (error) {
+      console.warn(
+        "[LOGOUT] Server logout failed:",
+        error.message
+      );
     } finally {
-      localStorage.removeItem("accessToken");
+      localStorage.removeItem(
+        "accessToken"
+      );
+
       localStorage.removeItem("user");
-      delete client.defaults.headers.common["Authorization"];
+
+      delete client.defaults.headers.common.Authorization;
+
       setAuthState({
         user: null,
         token: null,
         isAuthenticated: false,
         isLoading: false,
       });
+
+      console.log(
+        "[AUTH] Logged out"
+      );
     }
   };
 
+  /*
+  |--------------------------------------------------------------------------
+  | REFRESH TOKEN
+  |--------------------------------------------------------------------------
+  */
+
   const refreshToken = async () => {
     try {
-      const response = await client.post("/auth/refresh");
-      const { accessToken, user } = response.data;
-      localStorage.setItem("accessToken", accessToken);
-      localStorage.setItem("user", JSON.stringify(user));
-      client.defaults.headers.common["Authorization"] = `Bearer ${accessToken}`;
+      const response =
+        await client.post(
+          "/auth/refresh",
+          {},
+          {
+            timeout: 15000,
+          }
+        );
+
+      const {
+        accessToken,
+        token,
+        user,
+      } = response.data;
+
+      const finalToken =
+        accessToken || token;
+
+      if (!finalToken) {
+        throw new Error(
+          "No authentication token returned."
+        );
+      }
+
+      localStorage.setItem(
+        "accessToken",
+        finalToken
+      );
+
+      localStorage.setItem(
+        "user",
+        JSON.stringify(user)
+      );
+
+      client.defaults.headers.common.Authorization =
+        `Bearer ${finalToken}`;
+
       setAuthState({
         user,
-        token: accessToken,
+        token: finalToken,
         isAuthenticated: true,
         isLoading: false,
       });
-      return { success: true };
+
+      return {
+        success: true,
+        user,
+      };
     } catch (error) {
-      console.error("Refresh token failed:", error);
-      logout();
-      return { success: false };
+      console.error(
+        "[AUTH] Refresh failed:",
+        error
+      );
+
+      await logout();
+
+      return {
+        success: false,
+      };
     }
   };
+
+  /*
+  |--------------------------------------------------------------------------
+  | CONTEXT VALUE
+  |--------------------------------------------------------------------------
+  */
 
   const value = {
     ...authState,
@@ -446,13 +734,28 @@ export const AuthProvider = ({ children }) => {
     refreshToken,
   };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
 };
 
+/*
+|--------------------------------------------------------------------------
+| USE AUTH
+|--------------------------------------------------------------------------
+*/
+
 export const useAuth = () => {
-  const context = useContext(AuthContext);
+  const context =
+    useContext(AuthContext);
+
   if (!context) {
-    throw new Error("useAuth must be used within an AuthProvider");
+    throw new Error(
+      "useAuth must be used inside AuthProvider"
+    );
   }
+
   return context;
 };

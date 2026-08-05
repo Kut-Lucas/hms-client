@@ -217,17 +217,22 @@
 //     );
 //   }
 // }
+
+// src/api/client.js
+
 import axios from "axios";
 
 /*
 |--------------------------------------------------------------------------
 | API CONFIGURATION
 |--------------------------------------------------------------------------
-| Vite uses import.meta.env, NOT process.env.
+| Vite uses import.meta.env, NOT process.env
+|--------------------------------------------------------------------------
 */
 
 const API_URL =
-  import.meta.env.VITE_API_URL || "https://hms-server-odkt.onrender.com/api";
+  import.meta.env.VITE_API_URL ||
+  "https://hms-server-odkt.onrender.com/api";
 
 console.log("======================================");
 console.log("HMS API CLIENT");
@@ -244,9 +249,8 @@ console.log("======================================");
 const client = axios.create({
   baseURL: API_URL,
 
-  // 45 seconds is enough for Render cold starts,
-  // but don't make users wait indefinitely.
-  timeout: 45000,
+  // Do not wait forever.
+  timeout: 30000,
 
   headers: {
     "Content-Type": "application/json",
@@ -271,16 +275,15 @@ client.interceptors.request.use(
     }
 
     console.log(
-      `[REQUEST] ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`,
+      `[REQUEST] ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`
     );
 
     return config;
   },
-
   (error) => {
     console.error("[REQUEST ERROR]", error);
     return Promise.reject(error);
-  },
+  }
 );
 
 /*
@@ -291,7 +294,9 @@ client.interceptors.request.use(
 
 client.interceptors.response.use(
   (response) => {
-    console.log(`[RESPONSE] ${response.status} ${response.config?.url}`);
+    console.log(
+      `[RESPONSE] ${response.status} ${response.config.method?.toUpperCase()} ${response.config.url}`
+    );
 
     return response;
   },
@@ -299,41 +304,43 @@ client.interceptors.response.use(
   async (error) => {
     const config = error.config;
 
-    if (error.code === "ECONNABORTED") {
+    if (error.response) {
       console.error(
-        `[TIMEOUT] ${config?.method?.toUpperCase()} ${config?.url}`,
+        `[HTTP ERROR] ${error.response.status} ${config?.method?.toUpperCase()} ${config?.url}`
       );
-    } else if (error.response) {
+
       console.error(
-        `[HTTP ERROR] ${error.response.status}`,
-        error.response.data,
+        "[SERVER RESPONSE]",
+        error.response.data
       );
     } else if (error.request) {
-      console.error("[NETWORK ERROR] No response received");
+      console.error(
+        "[NETWORK ERROR] Server did not return a response"
+      );
+
+      console.error("URL:", config?.url);
+      console.error("Base URL:", config?.baseURL);
+      console.error("Error code:", error.code);
+      console.error("Message:", error.message);
     } else {
       console.error("[AXIOS ERROR]", error.message);
     }
 
     return Promise.reject(error);
-  },
+  }
 );
 
 /*
 |--------------------------------------------------------------------------
-| NAMED EXPORT
+| EXPORTS
 |--------------------------------------------------------------------------
-| This fixes:
+| Both are provided so existing imports work:
 |
-| "api is not exported by client.js"
-|
+| import client from "../api/client";
+| import { api } from "../api/client";
+|--------------------------------------------------------------------------
 */
 
 export const api = client;
-
-/*
-|--------------------------------------------------------------------------
-| DEFAULT EXPORT
-|--------------------------------------------------------------------------
-*/
 
 export default client;
