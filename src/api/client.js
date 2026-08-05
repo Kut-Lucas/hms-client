@@ -217,34 +217,123 @@
 //     );
 //   }
 // }
-
 import axios from "axios";
 
+/*
+|--------------------------------------------------------------------------
+| API CONFIGURATION
+|--------------------------------------------------------------------------
+| Vite uses import.meta.env, NOT process.env.
+*/
+
+const API_URL =
+  import.meta.env.VITE_API_URL || "https://hms-server-odkt.onrender.com/api";
+
+console.log("======================================");
+console.log("HMS API CLIENT");
+console.log("Environment:", import.meta.env.MODE);
+console.log("API URL:", API_URL);
+console.log("======================================");
+
+/*
+|--------------------------------------------------------------------------
+| AXIOS CLIENT
+|--------------------------------------------------------------------------
+*/
+
 const client = axios.create({
-  baseURL:
-    process.env.REACT_APP_API_URL || "https://hms-server-odkt.onrender.com/api",
-  timeout: 60000, // 60 seconds – enough for cold starts
+  baseURL: API_URL,
+
+  // 45 seconds is enough for Render cold starts,
+  // but don't make users wait indefinitely.
+  timeout: 45000,
+
   headers: {
     "Content-Type": "application/json",
+    Accept: "application/json",
   },
+
+  withCredentials: true,
 });
 
-// Retry on timeout up to 2 times (exponential backoff)
-client.interceptors.response.use(
-  (response) => response,
-  async (error) => {
-    const config = error.config;
-    if (!config || !config.retry) config.retry = 0;
-    // Only retry on timeout (ECONNABORTED) and if we haven't exhausted retries
-    if (error.code === "ECONNABORTED" && config.retry < 2) {
-      config.retry += 1;
-      console.log(`[RETRY] Attempt ${config.retry}/2 for ${config.url}`);
-      // Wait 2, 4 seconds between retries
-      await new Promise((resolve) => setTimeout(resolve, 2000 * config.retry));
-      return client(config);
+/*
+|--------------------------------------------------------------------------
+| REQUEST INTERCEPTOR
+|--------------------------------------------------------------------------
+*/
+
+client.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem("accessToken");
+
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
     }
+
+    console.log(
+      `[REQUEST] ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`,
+    );
+
+    return config;
+  },
+
+  (error) => {
+    console.error("[REQUEST ERROR]", error);
     return Promise.reject(error);
   },
 );
+
+/*
+|--------------------------------------------------------------------------
+| RESPONSE INTERCEPTOR
+|--------------------------------------------------------------------------
+*/
+
+client.interceptors.response.use(
+  (response) => {
+    console.log(`[RESPONSE] ${response.status} ${response.config?.url}`);
+
+    return response;
+  },
+
+  async (error) => {
+    const config = error.config;
+
+    if (error.code === "ECONNABORTED") {
+      console.error(
+        `[TIMEOUT] ${config?.method?.toUpperCase()} ${config?.url}`,
+      );
+    } else if (error.response) {
+      console.error(
+        `[HTTP ERROR] ${error.response.status}`,
+        error.response.data,
+      );
+    } else if (error.request) {
+      console.error("[NETWORK ERROR] No response received");
+    } else {
+      console.error("[AXIOS ERROR]", error.message);
+    }
+
+    return Promise.reject(error);
+  },
+);
+
+/*
+|--------------------------------------------------------------------------
+| NAMED EXPORT
+|--------------------------------------------------------------------------
+| This fixes:
+|
+| "api is not exported by client.js"
+|
+*/
+
+export const api = client;
+
+/*
+|--------------------------------------------------------------------------
+| DEFAULT EXPORT
+|--------------------------------------------------------------------------
+*/
 
 export default client;
