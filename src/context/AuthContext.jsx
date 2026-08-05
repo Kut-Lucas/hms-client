@@ -299,351 +299,382 @@
 // }
 
 
+
 import React, {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useState,
 } from "react";
 
-import client from "../api/client";
+import { api } from "../api/client.js";
 
 const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
-  const [authState, setAuthState] = useState({
-    user: null,
-    token: null,
-    isAuthenticated: false,
-    isLoading: true,
-  });
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  // ==================================================
-  // RESTORE LOGIN SESSION
-  // ==================================================
+  /*
+  |--------------------------------------------------------------------------
+  | LOAD SAVED USER
+  |--------------------------------------------------------------------------
+  */
+
   useEffect(() => {
-    const restoreSession = () => {
-      try {
-        const token = localStorage.getItem("accessToken");
-        const user = localStorage.getItem("user");
-
-        if (!token || !user) {
-          setAuthState({
-            user: null,
-            token: null,
-            isAuthenticated: false,
-            isLoading: false,
-          });
-
-          return;
-        }
-
-        const parsedUser = JSON.parse(user);
-
-        client.defaults.headers.common.Authorization = `Bearer ${token}`;
-
-        setAuthState({
-          user: parsedUser,
-          token,
-          isAuthenticated: true,
-          isLoading: false,
-        });
-
-        console.log("[AUTH] Session restored");
-      } catch (error) {
-        console.error("[AUTH] Failed to restore session:", error);
-
-        localStorage.removeItem("accessToken");
-        localStorage.removeItem("user");
-
-        delete client.defaults.headers.common.Authorization;
-
-        setAuthState({
-          user: null,
-          token: null,
-          isAuthenticated: false,
-          isLoading: false,
-        });
-      }
-    };
-
-    restoreSession();
-  }, []);
-
-  // ==================================================
-  // LOGIN
-  // ==================================================
-  const login = async (email, password) => {
-    console.log("======================================");
-    console.log("HMS LOGIN");
-    console.log("======================================");
-    console.log("Email:", email);
-    console.log("Endpoint: /auth/login");
-    console.log("======================================");
-
     try {
-      // ----------------------------------------------
-      // Validate input
-      // ----------------------------------------------
-      if (!email || !email.trim()) {
-        throw new Error("Please enter your email address.");
+      const savedUser =
+        localStorage.getItem("user") ||
+        localStorage.getItem("hms_user");
+
+      if (savedUser) {
+        const parsedUser = JSON.parse(savedUser);
+
+        setUser(parsedUser);
+
+        console.log("[AUTH] Saved user loaded:", parsedUser);
       }
-
-      if (!password) {
-        throw new Error("Please enter your password.");
-      }
-
-      const cleanEmail = email.trim().toLowerCase();
-
-      // ----------------------------------------------
-      // LOGIN
-      // ----------------------------------------------
-      console.log("[AUTH] Sending login request...");
-
-      const response = await client.post("/auth/login", {
-        email: cleanEmail,
-        password,
-      });
-
-      console.log("[AUTH] Login response:", response.data);
-
-      // ----------------------------------------------
-      // Validate backend response
-      // ----------------------------------------------
-      const { accessToken, user } = response.data || {};
-
-      if (!accessToken) {
-        console.error(
-          "[AUTH] Backend did not return accessToken:",
-          response.data
-        );
-
-        throw new Error(
-          "Login succeeded but the server did not return an access token."
-        );
-      }
-
-      if (!user) {
-        console.error(
-          "[AUTH] Backend did not return user:",
-          response.data
-        );
-
-        throw new Error(
-          "Login succeeded but the server did not return user information."
-        );
-      }
-
-      // ----------------------------------------------
-      // Save authentication
-      // ----------------------------------------------
-      localStorage.setItem("accessToken", accessToken);
-      localStorage.setItem("user", JSON.stringify(user));
-
-      client.defaults.headers.common.Authorization =
-        `Bearer ${accessToken}`;
-
-      setAuthState({
-        user,
-        token: accessToken,
-        isAuthenticated: true,
-        isLoading: false,
-      });
-
-      console.log("======================================");
-      console.log("LOGIN SUCCESS");
-      console.log("User:", user);
-      console.log("======================================");
-
-      return {
-        success: true,
-        user,
-      };
-    } catch (error) {
-      console.error("======================================");
-      console.error("LOGIN FAILED");
-      console.error("======================================");
-
-      console.error("Error:", error);
-      console.error("Name:", error.name);
-      console.error("Code:", error.code);
-      console.error("Message:", error.message);
-
-      console.error("HTTP Status:", error.response?.status);
-      console.error("Server Response:", error.response?.data);
-      console.error("Request URL:", error.config?.url);
-      console.error("Base URL:", error.config?.baseURL);
-
-      console.error("======================================");
-
-      // ----------------------------------------------
-      // Backend returned an HTTP error
-      // ----------------------------------------------
-      if (error.response) {
-        const status = error.response.status;
-        const serverMessage = error.response.data?.message;
-
-        if (status === 400) {
-          throw new Error(
-            serverMessage || "Please check the information you entered."
-          );
-        }
-
-        if (status === 401) {
-          throw new Error(
-            serverMessage || "Invalid email or password."
-          );
-        }
-
-        if (status === 403) {
-          throw new Error(
-            serverMessage ||
-              "Your account does not currently have permission to log in."
-          );
-        }
-
-        if (status === 404) {
-          throw new Error(
-            serverMessage || "Login service was not found."
-          );
-        }
-
-        if (status === 500) {
-          throw new Error(
-            serverMessage ||
-              "The hospital server encountered an internal error. Please try again."
-          );
-        }
-
-        if (status === 502 || status === 503) {
-          throw new Error(
-            "The hospital server is temporarily unavailable. Please wait a moment and try again."
-          );
-        }
-
-        throw new Error(
-          serverMessage ||
-            `Server returned HTTP ${status}. Please try again.`
-        );
-      }
-
-      // ----------------------------------------------
-      // Timeout
-      // ----------------------------------------------
-      if (
-        error.code === "ECONNABORTED" ||
-        error.code === "ETIMEDOUT"
-      ) {
-        throw new Error(
-          "The hospital server is taking too long to respond. It may be waking up. Please wait a moment and try again."
-        );
-      }
-
-      // ----------------------------------------------
-      // Network error
-      // ----------------------------------------------
-      if (
-        error.code === "ERR_NETWORK" ||
-        error.message === "Network Error"
-      ) {
-        throw new Error(
-          "Unable to connect to the hospital server. Please check your internet connection and try again."
-        );
-      }
-
-      // ----------------------------------------------
-      // Normal JavaScript error
-      // ----------------------------------------------
-      throw error;
-    }
-  };
-
-  // ==================================================
-  // LOGOUT
-  // ==================================================
-  const logout = async () => {
-    console.log("[AUTH] Logging out...");
-
-    try {
-      await client.post("/auth/logout");
-    } catch (error) {
-      console.warn(
-        "[AUTH] Logout request failed:",
-        error.response?.data || error.message
-      );
-    } finally {
-      localStorage.removeItem("accessToken");
-      localStorage.removeItem("user");
-
-      delete client.defaults.headers.common.Authorization;
-
-      setAuthState({
-        user: null,
-        token: null,
-        isAuthenticated: false,
-        isLoading: false,
-      });
-
-      console.log("[AUTH] Logout complete");
-    }
-  };
-
-  // ==================================================
-  // REFRESH TOKEN
-  // ==================================================
-  const refreshToken = async () => {
-    console.log("[AUTH] Refreshing token...");
-
-    try {
-      const response = await client.post("/auth/refresh");
-
-      const { accessToken, user } = response.data || {};
-
-      if (!accessToken || !user) {
-        throw new Error("Invalid refresh response.");
-      }
-
-      localStorage.setItem("accessToken", accessToken);
-      localStorage.setItem("user", JSON.stringify(user));
-
-      client.defaults.headers.common.Authorization =
-        `Bearer ${accessToken}`;
-
-      setAuthState({
-        user,
-        token: accessToken,
-        isAuthenticated: true,
-        isLoading: false,
-      });
-
-      console.log("[AUTH] Token refreshed");
-
-      return {
-        success: true,
-        user,
-      };
     } catch (error) {
       console.error(
-        "[AUTH] Token refresh failed:",
-        error.response?.data || error.message
+        "[AUTH] Failed to load saved user:",
+        error
       );
 
-      await logout();
-
-      return {
-        success: false,
-      };
+      localStorage.removeItem("user");
+      localStorage.removeItem("hms_user");
+    } finally {
+      setLoading(false);
     }
-  };
+  }, []);
 
-  // ==================================================
-  // CONTEXT VALUE
-  // ==================================================
+  /*
+  |--------------------------------------------------------------------------
+  | LOGIN
+  |--------------------------------------------------------------------------
+  */
+
+  const login = useCallback(
+    async (email, password, rememberMe = false) => {
+      console.log("======================================");
+      console.log("HMS LOGIN");
+      console.log("Email:", email);
+      console.log("Endpoint: /auth/login");
+      console.log("======================================");
+
+      try {
+        /*
+        |--------------------------------------------------------------------------
+        | Validate input
+        |--------------------------------------------------------------------------
+        */
+
+        if (!email || !email.trim()) {
+          throw new Error(
+            "Please enter your email address."
+          );
+        }
+
+        if (!password) {
+          throw new Error(
+            "Please enter your password."
+          );
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Send login request
+        |--------------------------------------------------------------------------
+        */
+
+        console.log(
+          "[AUTH] Sending login request..."
+        );
+
+        const response = await api.post(
+          "/auth/login",
+          {
+            email: email.trim().toLowerCase(),
+            password: password,
+          }
+        );
+
+        console.log(
+          "[AUTH] Login response:",
+          response.data
+        );
+
+        const data = response.data;
+
+        /*
+        |--------------------------------------------------------------------------
+        | Check backend response
+        |--------------------------------------------------------------------------
+        */
+
+        if (!data) {
+          throw new Error(
+            "The server returned an empty response."
+          );
+        }
+
+        if (data.success === false) {
+          throw new Error(
+            data.message ||
+              "Login failed. Please check your credentials."
+          );
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Find returned user
+        |--------------------------------------------------------------------------
+        */
+
+        const loggedInUser =
+          data.user ||
+          data.data?.user ||
+          data.account ||
+          data.data?.account ||
+          null;
+
+        /*
+        |--------------------------------------------------------------------------
+        | Find returned token
+        |--------------------------------------------------------------------------
+        */
+
+        const token =
+          data.token ||
+          data.accessToken ||
+          data.data?.token ||
+          data.data?.accessToken ||
+          null;
+
+        /*
+        |--------------------------------------------------------------------------
+        | Save authentication token
+        |--------------------------------------------------------------------------
+        */
+
+        if (token) {
+          localStorage.setItem(
+            "token",
+            token
+          );
+
+          localStorage.setItem(
+            "hms_token",
+            token
+          );
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Save user
+        |--------------------------------------------------------------------------
+        */
+
+        if (loggedInUser) {
+          localStorage.setItem(
+            "user",
+            JSON.stringify(loggedInUser)
+          );
+
+          localStorage.setItem(
+            "hms_user",
+            JSON.stringify(loggedInUser)
+          );
+
+          setUser(loggedInUser);
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Remember Me
+        |--------------------------------------------------------------------------
+        */
+
+        localStorage.setItem(
+          "rememberMe",
+          rememberMe ? "true" : "false"
+        );
+
+        /*
+        |--------------------------------------------------------------------------
+        | Successful login
+        |--------------------------------------------------------------------------
+        */
+
+        console.log("======================================");
+        console.log("LOGIN SUCCESS");
+        console.log("User:", loggedInUser);
+        console.log(
+          "Has token:",
+          Boolean(token)
+        );
+        console.log("======================================");
+
+        return {
+          success: true,
+          user: loggedInUser,
+          token: token,
+          data: data,
+        };
+      } catch (error) {
+        /*
+        |--------------------------------------------------------------------------
+        | LOGIN ERROR
+        |--------------------------------------------------------------------------
+        */
+
+        console.error("======================================");
+        console.error("LOGIN FAILED");
+        console.error("======================================");
+
+        console.error("Error:", error);
+        console.error(
+          "Name:",
+          error?.name
+        );
+        console.error(
+          "Code:",
+          error?.code
+        );
+        console.error(
+          "Message:",
+          error?.message
+        );
+
+        /*
+        |--------------------------------------------------------------------------
+        | Axios error details
+        |--------------------------------------------------------------------------
+        */
+
+        if (error?.response) {
+          console.error(
+            "HTTP Status:",
+            error.response.status
+          );
+
+          console.error(
+            "Server Response:",
+            error.response.data
+          );
+
+          console.error(
+            "Request URL:",
+            error.config?.url
+          );
+
+          console.error(
+            "Base URL:",
+            error.config?.baseURL
+          );
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Convert server error into useful message
+        |--------------------------------------------------------------------------
+        */
+
+        let message =
+          "The hospital server encountered an error. Please try again.";
+
+        if (
+          error?.response?.data?.message
+        ) {
+          message =
+            error.response.data.message;
+        } else if (
+          error?.response?.status === 400
+        ) {
+          message =
+            "Invalid login request. Please check your email and password.";
+        } else if (
+          error?.response?.status === 401
+        ) {
+          message =
+            "Invalid email or password.";
+        } else if (
+          error?.response?.status === 403
+        ) {
+          message =
+            "Your account does not have permission to log in.";
+        } else if (
+          error?.response?.status === 404
+        ) {
+          message =
+            "The login endpoint could not be found on the hospital server.";
+        } else if (
+          error?.response?.status >= 500
+        ) {
+          message =
+            "The hospital server encountered an internal error. Please try again.";
+        } else if (
+          !error?.response
+        ) {
+          message =
+            "Unable to connect to the hospital server. Please check your internet connection.";
+        } else if (
+          error?.message
+        ) {
+          message = error.message;
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Throw normal Error
+        |--------------------------------------------------------------------------
+        |
+        | Login.jsx can now simply use error.message.
+        |--------------------------------------------------------------------------
+        */
+
+        throw new Error(message);
+      }
+    },
+    []
+  );
+
+  /*
+  |--------------------------------------------------------------------------
+  | LOGOUT
+  |--------------------------------------------------------------------------
+  */
+
+  const logout = useCallback(() => {
+    console.log("[AUTH] Logging out...");
+
+    localStorage.removeItem("token");
+    localStorage.removeItem("hms_token");
+    localStorage.removeItem("authToken");
+
+    localStorage.removeItem("user");
+    localStorage.removeItem("hms_user");
+
+    localStorage.removeItem("rememberMe");
+
+    setUser(null);
+
+    console.log("[AUTH] Logout complete");
+  }, []);
+
+  /*
+  |--------------------------------------------------------------------------
+  | AUTHENTICATION STATE
+  |--------------------------------------------------------------------------
+  */
+
   const value = {
-    ...authState,
+    user,
+    setUser,
+    loading,
     login,
     logout,
-    refreshToken,
+    isAuthenticated: Boolean(user),
   };
 
   return (
@@ -653,17 +684,22 @@ export const AuthProvider = ({ children }) => {
   );
 };
 
-// ====================================================
-// useAuth
-// ====================================================
+/*
+|--------------------------------------------------------------------------
+| useAuth Hook
+|--------------------------------------------------------------------------
+*/
+
 export const useAuth = () => {
   const context = useContext(AuthContext);
 
   if (!context) {
     throw new Error(
-      "useAuth must be used inside an AuthProvider."
+      "useAuth must be used inside an AuthProvider"
     );
   }
 
   return context;
 };
+
+export default AuthContext;

@@ -218,28 +218,61 @@
 //   }
 // }
 
-
 import axios from "axios";
+
+/*
+|--------------------------------------------------------------------------
+| HMS API CLIENT
+|--------------------------------------------------------------------------
+*/
 
 const API_URL =
   import.meta.env.VITE_API_URL ||
   "https://hms-server-odkt.onrender.com/api";
 
-const client = axios.create({
+console.log("======================================");
+console.log("HMS API CLIENT");
+console.log("Environment:", import.meta.env.MODE);
+console.log("API URL:", API_URL);
+console.log("======================================");
+
+/*
+|--------------------------------------------------------------------------
+| Axios API instance
+|--------------------------------------------------------------------------
+*/
+
+const api = axios.create({
   baseURL: API_URL,
-  timeout: 60000,
+  timeout: 30000,
   headers: {
     "Content-Type": "application/json",
+    Accept: "application/json",
   },
+  withCredentials: true,
 });
 
-// ----------------------------------------------------
-// REQUEST LOGGER
-// ----------------------------------------------------
-client.interceptors.request.use(
+/*
+|--------------------------------------------------------------------------
+| REQUEST INTERCEPTOR
+|--------------------------------------------------------------------------
+*/
+
+api.interceptors.request.use(
   (config) => {
+    const token =
+      localStorage.getItem("token") ||
+      localStorage.getItem("hms_token") ||
+      localStorage.getItem("authToken");
+
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+
     console.log(
-      `[REQUEST] ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`
+      `[REQUEST] ${String(config.method || "GET").toUpperCase()} ${
+        config.baseURL || ""
+      }${config.url || ""}`
     );
 
     return config;
@@ -250,65 +283,65 @@ client.interceptors.request.use(
   }
 );
 
-// ----------------------------------------------------
-// RESPONSE / ERROR LOGGER
-// ----------------------------------------------------
-client.interceptors.response.use(
+/*
+|--------------------------------------------------------------------------
+| RESPONSE INTERCEPTOR
+|--------------------------------------------------------------------------
+*/
+
+api.interceptors.response.use(
   (response) => {
     console.log(
-      `[RESPONSE] ${response.status} ${response.config.method?.toUpperCase()} ${response.config.url}`
+      `[HTTP ${response.status}] ${String(
+        response.config?.method || "GET"
+      ).toUpperCase()} ${response.config?.url || ""}`
     );
 
     return response;
   },
 
-  async (error) => {
-    const config = error.config;
+  (error) => {
+    const status = error.response?.status;
+    const data = error.response?.data;
+    const url = error.config?.url;
 
     console.error(
-      "[HTTP ERROR]",
-      error.response?.status,
-      config?.method?.toUpperCase(),
-      config?.url
+      `[HTTP ERROR] ${status || "NETWORK"} ${
+        error.config?.method?.toUpperCase() || "UNKNOWN"
+      } ${url || ""}`
     );
 
-    if (error.response?.data) {
-      console.error("[SERVER RESPONSE]", error.response.data);
+    if (data) {
+      console.error("[SERVER RESPONSE]", data);
     }
 
-    // ------------------------------------------------
-    // RETRY ONLY NETWORK/TIMEOUT ERRORS
-    // ------------------------------------------------
-    if (
-      config &&
-      !config.__retryCount &&
-      (error.code === "ECONNABORTED" ||
-        error.code === "ERR_NETWORK")
-    ) {
-      config.__retryCount = 1;
+    if (status === 401) {
+      console.warn("[AUTH] Unauthorized request");
+    }
 
-      console.log("[RETRY] Retrying request after possible cold start...");
-
-      await new Promise((resolve) => setTimeout(resolve, 3000));
-
-      return client(config);
+    if (status >= 500) {
+      console.error(
+        "[SERVER ERROR] HMS backend returned a server error."
+      );
     }
 
     return Promise.reject(error);
   }
 );
 
-// ----------------------------------------------------
-// EXPORTS
-// ----------------------------------------------------
+/*
+|--------------------------------------------------------------------------
+| Export
+|--------------------------------------------------------------------------
+|
+| Login.jsx uses:
+|
+| import { api } from "../api/client.js";
+|
+| Therefore `api` MUST be a named export.
+|--------------------------------------------------------------------------
+*/
 
-// Default export
-export default client;
+export { api };
 
-// Named export.
-// This fixes:
-// "api is not exported by src/api/client.js"
-export { client as api };
-
-// Useful if other components need the API URL
-export { API_URL };
+export default api;
