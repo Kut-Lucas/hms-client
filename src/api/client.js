@@ -218,62 +218,26 @@
 //   }
 // }
 
-// src/api/client.js
 
 import axios from "axios";
-
-/*
-|--------------------------------------------------------------------------
-| API CONFIGURATION
-|--------------------------------------------------------------------------
-| Vite uses import.meta.env, NOT process.env
-|--------------------------------------------------------------------------
-*/
 
 const API_URL =
   import.meta.env.VITE_API_URL ||
   "https://hms-server-odkt.onrender.com/api";
 
-console.log("======================================");
-console.log("HMS API CLIENT");
-console.log("Environment:", import.meta.env.MODE);
-console.log("API URL:", API_URL);
-console.log("======================================");
-
-/*
-|--------------------------------------------------------------------------
-| AXIOS CLIENT
-|--------------------------------------------------------------------------
-*/
-
 const client = axios.create({
   baseURL: API_URL,
-
-  // Do not wait forever.
-  timeout: 30000,
-
+  timeout: 60000,
   headers: {
     "Content-Type": "application/json",
-    Accept: "application/json",
   },
-
-  withCredentials: true,
 });
 
-/*
-|--------------------------------------------------------------------------
-| REQUEST INTERCEPTOR
-|--------------------------------------------------------------------------
-*/
-
+// ----------------------------------------------------
+// REQUEST LOGGER
+// ----------------------------------------------------
 client.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem("accessToken");
-
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-
     console.log(
       `[REQUEST] ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`
     );
@@ -286,12 +250,9 @@ client.interceptors.request.use(
   }
 );
 
-/*
-|--------------------------------------------------------------------------
-| RESPONSE INTERCEPTOR
-|--------------------------------------------------------------------------
-*/
-
+// ----------------------------------------------------
+// RESPONSE / ERROR LOGGER
+// ----------------------------------------------------
 client.interceptors.response.use(
   (response) => {
     console.log(
@@ -304,43 +265,50 @@ client.interceptors.response.use(
   async (error) => {
     const config = error.config;
 
-    if (error.response) {
-      console.error(
-        `[HTTP ERROR] ${error.response.status} ${config?.method?.toUpperCase()} ${config?.url}`
-      );
+    console.error(
+      "[HTTP ERROR]",
+      error.response?.status,
+      config?.method?.toUpperCase(),
+      config?.url
+    );
 
-      console.error(
-        "[SERVER RESPONSE]",
-        error.response.data
-      );
-    } else if (error.request) {
-      console.error(
-        "[NETWORK ERROR] Server did not return a response"
-      );
+    if (error.response?.data) {
+      console.error("[SERVER RESPONSE]", error.response.data);
+    }
 
-      console.error("URL:", config?.url);
-      console.error("Base URL:", config?.baseURL);
-      console.error("Error code:", error.code);
-      console.error("Message:", error.message);
-    } else {
-      console.error("[AXIOS ERROR]", error.message);
+    // ------------------------------------------------
+    // RETRY ONLY NETWORK/TIMEOUT ERRORS
+    // ------------------------------------------------
+    if (
+      config &&
+      !config.__retryCount &&
+      (error.code === "ECONNABORTED" ||
+        error.code === "ERR_NETWORK")
+    ) {
+      config.__retryCount = 1;
+
+      console.log("[RETRY] Retrying request after possible cold start...");
+
+      await new Promise((resolve) => setTimeout(resolve, 3000));
+
+      return client(config);
     }
 
     return Promise.reject(error);
   }
 );
 
-/*
-|--------------------------------------------------------------------------
-| EXPORTS
-|--------------------------------------------------------------------------
-| Both are provided so existing imports work:
-|
-| import client from "../api/client";
-| import { api } from "../api/client";
-|--------------------------------------------------------------------------
-*/
+// ----------------------------------------------------
+// EXPORTS
+// ----------------------------------------------------
 
-export const api = client;
-
+// Default export
 export default client;
+
+// Named export.
+// This fixes:
+// "api is not exported by src/api/client.js"
+export { client as api };
+
+// Useful if other components need the API URL
+export { API_URL };

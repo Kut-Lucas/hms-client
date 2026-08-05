@@ -299,24 +299,16 @@
 // }
 
 
-// src/context/AuthContext.jsx
-
 import React, {
   createContext,
   useContext,
-  useState,
   useEffect,
+  useState,
 } from "react";
 
 import client from "../api/client";
 
 const AuthContext = createContext(null);
-
-/*
-|--------------------------------------------------------------------------
-| AUTH PROVIDER
-|--------------------------------------------------------------------------
-*/
 
 export const AuthProvider = ({ children }) => {
   const [authState, setAuthState] = useState({
@@ -326,12 +318,9 @@ export const AuthProvider = ({ children }) => {
     isLoading: true,
   });
 
-  /*
-  |--------------------------------------------------------------------------
-  | RESTORE LOGIN SESSION
-  |--------------------------------------------------------------------------
-  */
-
+  // ==================================================
+  // RESTORE LOGIN SESSION
+  // ==================================================
   useEffect(() => {
     const restoreSession = () => {
       try {
@@ -351,8 +340,7 @@ export const AuthProvider = ({ children }) => {
 
         const parsedUser = JSON.parse(user);
 
-        client.defaults.headers.common.Authorization =
-          `Bearer ${token}`;
+        client.defaults.headers.common.Authorization = `Bearer ${token}`;
 
         setAuthState({
           user: parsedUser,
@@ -363,10 +351,7 @@ export const AuthProvider = ({ children }) => {
 
         console.log("[AUTH] Session restored");
       } catch (error) {
-        console.error(
-          "[AUTH] Failed to restore session:",
-          error
-        );
+        console.error("[AUTH] Failed to restore session:", error);
 
         localStorage.removeItem("accessToken");
         localStorage.removeItem("user");
@@ -385,127 +370,82 @@ export const AuthProvider = ({ children }) => {
     restoreSession();
   }, []);
 
-  /*
-  |--------------------------------------------------------------------------
-  | LOGIN
-  |--------------------------------------------------------------------------
-  */
-
+  // ==================================================
+  // LOGIN
+  // ==================================================
   const login = async (email, password) => {
-    const cleanEmail = email.trim().toLowerCase();
-
     console.log("======================================");
     console.log("HMS LOGIN");
     console.log("======================================");
-    console.log("Email:", cleanEmail);
-    console.log(
-      "API:",
-      client.defaults.baseURL
-    );
-    console.log("Endpoint:", "/auth/login");
+    console.log("Email:", email);
+    console.log("Endpoint: /auth/login");
     console.log("======================================");
 
     try {
-      const startTime = Date.now();
+      // ----------------------------------------------
+      // Validate input
+      // ----------------------------------------------
+      if (!email || !email.trim()) {
+        throw new Error("Please enter your email address.");
+      }
 
-      /*
-      |--------------------------------------------------------------------------
-      | LOGIN REQUEST
-      |--------------------------------------------------------------------------
-      */
+      if (!password) {
+        throw new Error("Please enter your password.");
+      }
 
-      const response = await client.post(
-        "/auth/login",
-        {
-          email: cleanEmail,
-          password,
-        },
-        {
-          timeout: 30000,
-        }
-      );
+      const cleanEmail = email.trim().toLowerCase();
 
-      const elapsed =
-        Date.now() - startTime;
+      // ----------------------------------------------
+      // LOGIN
+      // ----------------------------------------------
+      console.log("[AUTH] Sending login request...");
 
-      console.log(
-        `[LOGIN] Server responded in ${elapsed}ms`
-      );
+      const response = await client.post("/auth/login", {
+        email: cleanEmail,
+        password,
+      });
 
-      console.log(
-        "[LOGIN] Response:",
-        response.data
-      );
+      console.log("[AUTH] Login response:", response.data);
 
-      /*
-      |--------------------------------------------------------------------------
-      | EXTRACT RESPONSE
-      |--------------------------------------------------------------------------
-      */
+      // ----------------------------------------------
+      // Validate backend response
+      // ----------------------------------------------
+      const { accessToken, user } = response.data || {};
 
-      const {
-        accessToken,
-        token,
-        user,
-      } = response.data;
-
-      const finalToken =
-        accessToken || token;
-
-      /*
-      |--------------------------------------------------------------------------
-      | VALIDATE SERVER RESPONSE
-      |--------------------------------------------------------------------------
-      */
-
-      if (!finalToken) {
+      if (!accessToken) {
         console.error(
-          "[LOGIN] Server did not return an access token"
+          "[AUTH] Backend did not return accessToken:",
+          response.data
         );
 
         throw new Error(
-          "Login succeeded but the server did not return an authentication token."
+          "Login succeeded but the server did not return an access token."
         );
       }
 
       if (!user) {
         console.error(
-          "[LOGIN] Server did not return user information"
+          "[AUTH] Backend did not return user:",
+          response.data
         );
 
         throw new Error(
-          "Login succeeded but no user information was returned."
+          "Login succeeded but the server did not return user information."
         );
       }
 
-      /*
-      |--------------------------------------------------------------------------
-      | SAVE SESSION
-      |--------------------------------------------------------------------------
-      */
-
-      localStorage.setItem(
-        "accessToken",
-        finalToken
-      );
-
-      localStorage.setItem(
-        "user",
-        JSON.stringify(user)
-      );
+      // ----------------------------------------------
+      // Save authentication
+      // ----------------------------------------------
+      localStorage.setItem("accessToken", accessToken);
+      localStorage.setItem("user", JSON.stringify(user));
 
       client.defaults.headers.common.Authorization =
-        `Bearer ${finalToken}`;
-
-      /*
-      |--------------------------------------------------------------------------
-      | UPDATE AUTH STATE
-      |--------------------------------------------------------------------------
-      */
+        `Bearer ${accessToken}`;
 
       setAuthState({
         user,
-        token: finalToken,
+        token: accessToken,
         isAuthenticated: true,
         isLoading: false,
       });
@@ -513,10 +453,6 @@ export const AuthProvider = ({ children }) => {
       console.log("======================================");
       console.log("LOGIN SUCCESS");
       console.log("User:", user);
-      console.log(
-        "Time:",
-        `${elapsed}ms`
-      );
       console.log("======================================");
 
       return {
@@ -528,112 +464,115 @@ export const AuthProvider = ({ children }) => {
       console.error("LOGIN FAILED");
       console.error("======================================");
 
-      console.error(
-        "Error name:",
-        error.name
-      );
+      console.error("Error:", error);
+      console.error("Name:", error.name);
+      console.error("Code:", error.code);
+      console.error("Message:", error.message);
 
-      console.error(
-        "Error code:",
-        error.code
-      );
-
-      console.error(
-        "Message:",
-        error.message
-      );
-
-      console.error(
-        "URL:",
-        error.config?.url
-      );
-
-      console.error(
-        "Base URL:",
-        error.config?.baseURL
-      );
-
-      console.error(
-        "HTTP status:",
-        error.response?.status
-      );
-
-      console.error(
-        "Server response:",
-        error.response?.data
-      );
+      console.error("HTTP Status:", error.response?.status);
+      console.error("Server Response:", error.response?.data);
+      console.error("Request URL:", error.config?.url);
+      console.error("Base URL:", error.config?.baseURL);
 
       console.error("======================================");
 
-      /*
-      |--------------------------------------------------------------------------
-      | USER-FRIENDLY ERROR
-      |--------------------------------------------------------------------------
-      */
+      // ----------------------------------------------
+      // Backend returned an HTTP error
+      // ----------------------------------------------
+      if (error.response) {
+        const status = error.response.status;
+        const serverMessage = error.response.data?.message;
 
-      let message =
-        "Unable to login. Please try again.";
+        if (status === 400) {
+          throw new Error(
+            serverMessage || "Please check the information you entered."
+          );
+        }
 
-      if (
-        error.code === "ECONNABORTED" ||
-        error.code === "ETIMEDOUT" ||
-        error.message?.toLowerCase().includes("timeout")
-      ) {
-        message =
-          "The server took too long to respond. Please try again in a few seconds.";
-      } else if (
-        error.response?.status === 401
-      ) {
-        message =
-          error.response?.data?.message ||
-          "Invalid email or password.";
-      } else if (
-        error.response?.status === 403
-      ) {
-        message =
-          error.response?.data?.message ||
-          "Your account is not allowed to login.";
-      } else if (
-        error.response?.status >= 500
-      ) {
-        message =
-          "The hospital server encountered an error. Please try again.";
-      } else if (
-        error.response?.data?.message
-      ) {
-        message =
-          error.response.data.message;
+        if (status === 401) {
+          throw new Error(
+            serverMessage || "Invalid email or password."
+          );
+        }
+
+        if (status === 403) {
+          throw new Error(
+            serverMessage ||
+              "Your account does not currently have permission to log in."
+          );
+        }
+
+        if (status === 404) {
+          throw new Error(
+            serverMessage || "Login service was not found."
+          );
+        }
+
+        if (status === 500) {
+          throw new Error(
+            serverMessage ||
+              "The hospital server encountered an internal error. Please try again."
+          );
+        }
+
+        if (status === 502 || status === 503) {
+          throw new Error(
+            "The hospital server is temporarily unavailable. Please wait a moment and try again."
+          );
+        }
+
+        throw new Error(
+          serverMessage ||
+            `Server returned HTTP ${status}. Please try again.`
+        );
       }
 
-      throw new Error(message);
+      // ----------------------------------------------
+      // Timeout
+      // ----------------------------------------------
+      if (
+        error.code === "ECONNABORTED" ||
+        error.code === "ETIMEDOUT"
+      ) {
+        throw new Error(
+          "The hospital server is taking too long to respond. It may be waking up. Please wait a moment and try again."
+        );
+      }
+
+      // ----------------------------------------------
+      // Network error
+      // ----------------------------------------------
+      if (
+        error.code === "ERR_NETWORK" ||
+        error.message === "Network Error"
+      ) {
+        throw new Error(
+          "Unable to connect to the hospital server. Please check your internet connection and try again."
+        );
+      }
+
+      // ----------------------------------------------
+      // Normal JavaScript error
+      // ----------------------------------------------
+      throw error;
     }
   };
 
-  /*
-  |--------------------------------------------------------------------------
-  | LOGOUT
-  |--------------------------------------------------------------------------
-  */
-
+  // ==================================================
+  // LOGOUT
+  // ==================================================
   const logout = async () => {
+    console.log("[AUTH] Logging out...");
+
     try {
-      await client.post(
-        "/auth/logout",
-        {},
-        {
-          timeout: 10000,
-        }
-      );
+      await client.post("/auth/logout");
     } catch (error) {
       console.warn(
-        "[LOGOUT] Server logout failed:",
-        error.message
+        "[AUTH] Logout request failed:",
+        error.response?.data || error.message
       );
     } finally {
-      localStorage.removeItem(
-        "accessToken"
-      );
-
+      localStorage.removeItem("accessToken");
       localStorage.removeItem("user");
 
       delete client.defaults.headers.common.Authorization;
@@ -645,63 +584,39 @@ export const AuthProvider = ({ children }) => {
         isLoading: false,
       });
 
-      console.log(
-        "[AUTH] Logged out"
-      );
+      console.log("[AUTH] Logout complete");
     }
   };
 
-  /*
-  |--------------------------------------------------------------------------
-  | REFRESH TOKEN
-  |--------------------------------------------------------------------------
-  */
-
+  // ==================================================
+  // REFRESH TOKEN
+  // ==================================================
   const refreshToken = async () => {
+    console.log("[AUTH] Refreshing token...");
+
     try {
-      const response =
-        await client.post(
-          "/auth/refresh",
-          {},
-          {
-            timeout: 15000,
-          }
-        );
+      const response = await client.post("/auth/refresh");
 
-      const {
-        accessToken,
-        token,
-        user,
-      } = response.data;
+      const { accessToken, user } = response.data || {};
 
-      const finalToken =
-        accessToken || token;
-
-      if (!finalToken) {
-        throw new Error(
-          "No authentication token returned."
-        );
+      if (!accessToken || !user) {
+        throw new Error("Invalid refresh response.");
       }
 
-      localStorage.setItem(
-        "accessToken",
-        finalToken
-      );
-
-      localStorage.setItem(
-        "user",
-        JSON.stringify(user)
-      );
+      localStorage.setItem("accessToken", accessToken);
+      localStorage.setItem("user", JSON.stringify(user));
 
       client.defaults.headers.common.Authorization =
-        `Bearer ${finalToken}`;
+        `Bearer ${accessToken}`;
 
       setAuthState({
         user,
-        token: finalToken,
+        token: accessToken,
         isAuthenticated: true,
         isLoading: false,
       });
+
+      console.log("[AUTH] Token refreshed");
 
       return {
         success: true,
@@ -709,8 +624,8 @@ export const AuthProvider = ({ children }) => {
       };
     } catch (error) {
       console.error(
-        "[AUTH] Refresh failed:",
-        error
+        "[AUTH] Token refresh failed:",
+        error.response?.data || error.message
       );
 
       await logout();
@@ -721,12 +636,9 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  /*
-  |--------------------------------------------------------------------------
-  | CONTEXT VALUE
-  |--------------------------------------------------------------------------
-  */
-
+  // ==================================================
+  // CONTEXT VALUE
+  // ==================================================
   const value = {
     ...authState,
     login,
@@ -741,19 +653,15 @@ export const AuthProvider = ({ children }) => {
   );
 };
 
-/*
-|--------------------------------------------------------------------------
-| USE AUTH
-|--------------------------------------------------------------------------
-*/
-
+// ====================================================
+// useAuth
+// ====================================================
 export const useAuth = () => {
-  const context =
-    useContext(AuthContext);
+  const context = useContext(AuthContext);
 
   if (!context) {
     throw new Error(
-      "useAuth must be used inside AuthProvider"
+      "useAuth must be used inside an AuthProvider."
     );
   }
 
