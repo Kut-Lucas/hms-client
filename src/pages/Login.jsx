@@ -245,9 +245,9 @@ import { HOSPITAL } from "../config/hospital.js";
 const field =
   "mt-1 w-full rounded-lg border border-slate-300 px-3 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-hospital-600";
 
-/* -------------------------------------------------------------------------- */
-/* Forgot Password                                                            */
-/* -------------------------------------------------------------------------- */
+/* ========================================================================== */
+/* FORGOT PASSWORD                                                            */
+/* ========================================================================== */
 
 function ForgotPasswordPanel({ onBack }) {
   const [email, setEmail] = useState("");
@@ -266,7 +266,7 @@ function ForgotPasswordPanel({ onBack }) {
     setSuccess("");
 
     if (!email.trim()) {
-      setErr("Please enter your email address.");
+      setErr("Please enter your email.");
       return;
     }
 
@@ -281,15 +281,17 @@ function ForgotPasswordPanel({ onBack }) {
     }
 
     if (newPw !== confirmPw) {
-      setErr("New passwords do not match.");
+      setErr("Passwords do not match.");
       return;
     }
 
     setLoading(true);
 
     try {
+      console.log("======================================");
       console.log("PASSWORD RESET REQUEST");
       console.log("Email:", email.trim().toLowerCase());
+      console.log("======================================");
 
       const response = await api.post("/auth/reset-password", {
         email: email.trim().toLowerCase(),
@@ -298,14 +300,13 @@ function ForgotPasswordPanel({ onBack }) {
         confirm_password: confirmPw,
       });
 
-      const data = response.data;
+      console.log("PASSWORD RESET RESPONSE:");
+      console.log(response.data);
 
-      console.log("PASSWORD RESET RESPONSE:", data);
-
-      if (data?.success) {
+      if (response.data?.success) {
         setSuccess(
-          data.message ||
-            "Password changed successfully. You can now sign in."
+          response.data.message ||
+            "Password changed successfully. You can now log in."
         );
 
         setEmail("");
@@ -313,23 +314,39 @@ function ForgotPasswordPanel({ onBack }) {
         setNewPw("");
         setConfirmPw("");
       } else {
-        setErr(data?.message || "Password reset failed.");
-      }
-    } catch (ex) {
-      console.error("PASSWORD RESET ERROR:", ex);
-
-      const status = ex.response?.status;
-      const serverMessage = ex.response?.data?.message;
-
-      if (serverMessage) {
-        setErr(serverMessage);
-      } else if (status) {
         setErr(
-          `Password reset failed. Server returned HTTP ${status}.`
+          response.data?.message ||
+            "Password reset failed."
+        );
+      }
+    } catch (error) {
+      console.error("PASSWORD RESET ERROR:", error);
+
+      console.error(
+        "Status:",
+        error.response?.status
+      );
+
+      console.error(
+        "Response:",
+        error.response?.data
+      );
+
+      console.error(
+        "Message:",
+        error.message
+      );
+
+      if (error.response?.data?.message) {
+        setErr(error.response.data.message);
+      } else if (error.response?.status) {
+        setErr(
+          `Password reset failed. HTTP ${error.response.status}`
         );
       } else {
         setErr(
-          "Unable to contact the server. Please check your internet connection."
+          error.message ||
+            "Unable to contact the server."
         );
       }
     } finally {
@@ -338,11 +355,12 @@ function ForgotPasswordPanel({ onBack }) {
   }
 
   return (
-    <div className="w-full max-w-md rounded-2xl bg-white p-8 text-base shadow-xl">
+    <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-xl">
+
       <div className="flex flex-col items-center gap-2">
         <img
           src={HOSPITAL.logo}
-          alt="Multicare Hospital logo"
+          alt="Hospital logo"
           className="h-16 w-16 object-contain"
         />
 
@@ -351,30 +369,32 @@ function ForgotPasswordPanel({ onBack }) {
         </h1>
 
         <p className="text-center text-xs text-slate-500">
-          Ask your administrator to generate a reset code, then enter it
-          below.
+          Ask your administrator for a reset code.
         </p>
       </div>
 
       {success ? (
         <div className="mt-6 space-y-4">
-          <div className="rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+
+          <div className="rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-800">
             ✔ {success}
           </div>
 
           <button
             type="button"
-            className="w-full rounded-lg bg-hospital-800 py-2.5 font-medium text-white hover:bg-hospital-900"
             onClick={onBack}
+            className="w-full rounded-lg bg-hospital-800 py-2.5 font-medium text-white hover:bg-hospital-900"
           >
             Back to sign in
           </button>
+
         </div>
       ) : (
         <form
-          className="mt-6 space-y-4"
           onSubmit={onSubmit}
+          className="mt-6 space-y-4"
         >
+
           {err && (
             <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
               {err}
@@ -383,16 +403,17 @@ function ForgotPasswordPanel({ onBack }) {
 
           <div>
             <label className="text-sm font-medium text-slate-700">
-              Your email address
+              Email
             </label>
 
             <input
               className={field}
               type="email"
-              autoComplete="email"
-              placeholder="staff@multicare.co.ke"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) =>
+                setEmail(e.target.value)
+              }
+              placeholder="staff@multicare.co.ke"
               required
               disabled={loading}
             />
@@ -403,20 +424,17 @@ function ForgotPasswordPanel({ onBack }) {
               Reset code
             </label>
 
-            <p className="mb-1 text-xs text-slate-500">
-              Contact your administrator. The reset code expires in 2
-              minutes.
-            </p>
-
             <input
               className={`${field} font-mono uppercase tracking-widest`}
               type="text"
-              placeholder="e.g. AB3K7MX2"
               maxLength={8}
               value={code}
               onChange={(e) =>
-                setCode(e.target.value.toUpperCase())
+                setCode(
+                  e.target.value.toUpperCase()
+                )
               }
+              placeholder="AB3K7MX2"
               required
               disabled={loading}
             />
@@ -430,10 +448,11 @@ function ForgotPasswordPanel({ onBack }) {
             <input
               className={field}
               type="password"
-              autoComplete="new-password"
-              placeholder="At least 8 characters"
               value={newPw}
-              onChange={(e) => setNewPw(e.target.value)}
+              onChange={(e) =>
+                setNewPw(e.target.value)
+              }
+              placeholder="At least 8 characters"
               required
               disabled={loading}
             />
@@ -441,16 +460,17 @@ function ForgotPasswordPanel({ onBack }) {
 
           <div>
             <label className="text-sm font-medium text-slate-700">
-              Confirm new password
+              Confirm password
             </label>
 
             <input
               className={field}
               type="password"
-              autoComplete="new-password"
-              placeholder="Repeat the new password"
               value={confirmPw}
-              onChange={(e) => setConfirmPw(e.target.value)}
+              onChange={(e) =>
+                setConfirmPw(e.target.value)
+              }
+              placeholder="Repeat password"
               required
               disabled={loading}
             />
@@ -459,44 +479,52 @@ function ForgotPasswordPanel({ onBack }) {
           <button
             type="submit"
             disabled={loading}
-            className="w-full rounded-lg bg-hospital-800 py-2.5 font-medium text-white hover:bg-hospital-900 disabled:cursor-not-allowed disabled:opacity-50"
+            className="w-full rounded-lg bg-hospital-800 py-2.5 font-medium text-white hover:bg-hospital-900 disabled:opacity-50"
           >
-            {loading ? "Resetting..." : "Reset password"}
+            {loading
+              ? "Resetting..."
+              : "Reset password"}
           </button>
 
           <button
             type="button"
-            disabled={loading}
-            className="w-full rounded-lg border border-slate-300 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50"
             onClick={onBack}
+            disabled={loading}
+            className="w-full rounded-lg border border-slate-300 py-2.5 text-sm font-medium text-slate-700 hover:bg-slate-50"
           >
             ← Back to sign in
           </button>
+
         </form>
       )}
     </div>
   );
 }
 
-/* -------------------------------------------------------------------------- */
-/* Login Page                                                                  */
-/* -------------------------------------------------------------------------- */
+/* ========================================================================== */
+/* LOGIN PAGE                                                                 */
+/* ========================================================================== */
 
 export default function Login() {
-  const { login, isAuthenticated, user } = useAuth();
+  const {
+    login,
+    isAuthenticated,
+    user,
+  } = useAuth();
+
+  const navigate = useNavigate();
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
 
-  const [err, setErr] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
-  const [showForgot, setShowForgot] = useState(false);
-
-  const nav = useNavigate();
+  const [showForgot, setShowForgot] =
+    useState(false);
 
   /* ------------------------------------------------------------------------ */
-  /* Already authenticated                                                    */
+  /* Already logged in                                                        */
   /* ------------------------------------------------------------------------ */
 
   if (isAuthenticated && user) {
@@ -509,38 +537,53 @@ export default function Login() {
   }
 
   /* ------------------------------------------------------------------------ */
-  /* Login                                                                     */
+  /* LOGIN                                                                     */
   /* ------------------------------------------------------------------------ */
 
-  async function onSubmit(e) {
+  async function handleLogin(e) {
     e.preventDefault();
 
-    if (loading) return;
+    if (loading) {
+      return;
+    }
 
-    setErr("");
+    setError("");
 
-    const cleanEmail = email.trim().toLowerCase();
+    const cleanEmail =
+      email.trim().toLowerCase();
 
     if (!cleanEmail) {
-      setErr("Please enter your email address.");
+      setError("Please enter your email.");
       return;
     }
 
     if (!password) {
-      setErr("Please enter your password.");
+      setError("Please enter your password.");
       return;
     }
 
     setLoading(true);
 
     console.log("======================================");
-    console.log("LOGIN REQUEST");
+    console.log("HMS LOGIN TEST");
+    console.log("======================================");
+
     console.log("Email:", cleanEmail);
+
     console.log(
       "API:",
       import.meta.env.VITE_API_URL ||
         "http://localhost:5000/api"
     );
+
+    console.log(
+      "Backend login URL:",
+      `${
+        import.meta.env.VITE_API_URL ||
+        "http://localhost:5000/api"
+      }/auth/login`
+    );
+
     console.log("======================================");
 
     try {
@@ -549,132 +592,213 @@ export default function Login() {
         password
       );
 
-      console.log("LOGIN RESPONSE:", data);
+      console.log("======================================");
+      console.log("LOGIN RESPONSE RECEIVED");
+      console.log("======================================");
 
-      if (!data?.success) {
-        setErr(
-          data?.message ||
-            "Login failed. Please check your credentials."
+      console.log(data);
+
+      if (!data) {
+        setError(
+          "The server returned an empty response."
         );
         return;
       }
 
-      if (!data?.user) {
-        setErr(
-          "Login succeeded, but the server did not return user information."
+      if (!data.success) {
+        setError(
+          data.message ||
+            "Login failed."
+        );
+        return;
+      }
+
+      if (!data.user) {
+        setError(
+          "Login succeeded but no user information was returned."
         );
         return;
       }
 
       console.log(
-        "LOGIN SUCCESS:",
+        "LOGIN SUCCESSFUL"
+      );
+
+      console.log(
+        "User:",
         data.user
       );
 
-      /*
-       * Navigate using the role returned by the backend.
-       */
-      nav(
+      console.log(
+        "Role:",
+        data.user.role
+      );
+
+      console.log(
+        "Redirecting..."
+      );
+
+      navigate(
         `/${data.user.role}/dashboard`,
         {
           replace: true,
         }
       );
-    } catch (ex) {
+
+    } catch (error) {
+
+      console.error("======================================");
+      console.error("LOGIN FAILED");
+      console.error("======================================");
+
       console.error(
-        "======================================"
+        "Error:",
+        error
       );
 
       console.error(
-        "LOGIN ERROR"
-      );
-
-      console.error(ex);
-
-      console.error(
-        "Status:",
-        ex.response?.status
+        "Error name:",
+        error.name
       );
 
       console.error(
-        "Response:",
-        ex.response?.data
+        "Error message:",
+        error.message
       );
 
       console.error(
-        "======================================"
+        "HTTP status:",
+        error.response?.status
       );
 
-      /*
-       * Show the actual backend message.
-       */
+      console.error(
+        "Server response:",
+        error.response?.data
+      );
 
-      if (ex.response?.data?.message) {
-        setErr(
-          ex.response.data.message
+      console.error(
+        "Request URL:",
+        error.config?.url
+      );
+
+      console.error(
+        "Base URL:",
+        error.config?.baseURL
+      );
+
+      console.error(
+        "Full URL:",
+        error.config
+          ? `${error.config.baseURL}${error.config.url}`
+          : "Unknown"
+      );
+
+      console.error("======================================");
+
+      /* -------------------------------------------------------------------- */
+      /* Show the actual error                                                */
+      /* -------------------------------------------------------------------- */
+
+      if (
+        error.code ===
+        "ECONNABORTED"
+      ) {
+        setError(
+          "The hospital server did not respond within 30 seconds. This is a backend/database timeout, not an internet connection problem."
         );
       } else if (
-        ex.response?.status === 401
+        error.code ===
+        "ERR_NETWORK"
       ) {
-        setErr(
-          "Invalid email or password."
+        setError(
+          "The browser could not reach the hospital server."
         );
       } else if (
-        ex.response?.status === 403
+        error.response?.status === 400
       ) {
-        setErr(
-          "Your account is not approved or has been deactivated."
+        setError(
+          error.response?.data?.message ||
+            "Invalid login request."
         );
       } else if (
-        ex.response?.status === 500
+        error.response?.status === 401
       ) {
-        setErr(
-          "The hospital server encountered an internal error. Please check the server logs."
+        setError(
+          error.response?.data?.message ||
+            "Invalid email or password."
         );
-      } else if (!ex.response) {
-        setErr(
-          "Unable to contact the hospital server. Please check your internet connection."
+      } else if (
+        error.response?.status === 403
+      ) {
+        setError(
+          error.response?.data?.message ||
+            "Your account has not been approved or is inactive."
+        );
+      } else if (
+        error.response?.status === 500
+      ) {
+        setError(
+          error.response?.data?.message ||
+            "The hospital server encountered an internal error."
+        );
+      } else if (
+        error.response?.status
+      ) {
+        setError(
+          error.response?.data?.message ||
+            `Server returned HTTP ${error.response.status}.`
         );
       } else {
-        setErr(
-          `Login failed. Server returned HTTP ${ex.response.status}.`
+        setError(
+          error.message ||
+            "Login failed."
         );
       }
+
     } finally {
       setLoading(false);
+
+      console.log(
+        "LOGIN LOADING COMPLETE"
+      );
     }
   }
 
   /* ------------------------------------------------------------------------ */
-  /* Forgot Password                                                           */
+  /* Forgot password                                                          */
   /* ------------------------------------------------------------------------ */
 
   if (showForgot) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-sky-100 via-blue-50 to-sky-200 p-4">
+
         <ForgotPasswordPanel
           onBack={() => {
             setShowForgot(false);
-            setErr("");
+            setError("");
           }}
         />
+
       </div>
     );
   }
 
   /* ------------------------------------------------------------------------ */
-  /* Render                                                                    */
+  /* LOGIN UI                                                                  */
   /* ------------------------------------------------------------------------ */
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-gradient-to-br from-sky-100 via-blue-50 to-sky-200 p-4">
-      <div className="w-full max-w-md rounded-2xl bg-white p-8 text-base shadow-xl">
 
-        {/* Hospital Logo */}
+      <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-xl">
+
+        {/* Hospital logo */}
+
         <div className="flex flex-col items-center gap-2">
+
           <img
             src={HOSPITAL.logo}
-            alt="Multicare Hospital logo"
+            alt="Hospital logo"
             className="h-20 w-20 object-contain"
           />
 
@@ -685,32 +809,40 @@ export default function Login() {
           <p className="text-center text-xs italic text-slate-500">
             {HOSPITAL.tagline}
           </p>
+
         </div>
 
         <p className="mt-4 text-center text-sm font-medium text-slate-600">
           Staff Sign In
         </p>
 
-        {/* Login Form */}
-        <form
-          className="mt-8 space-y-4"
-          onSubmit={onSubmit}
-        >
-          {/* Error */}
-          {err && (
-            <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-              <div className="font-semibold">
-                Login failed
-              </div>
+        {/* Error */}
 
-              <div className="mt-1">
-                {err}
-              </div>
+        {error && (
+          <div className="mt-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+
+            <div className="font-bold">
+              Login failed
             </div>
-          )}
+
+            <div className="mt-1">
+              {error}
+            </div>
+
+          </div>
+        )}
+
+        {/* Form */}
+
+        <form
+          className="mt-6 space-y-4"
+          onSubmit={handleLogin}
+        >
 
           {/* Email */}
+
           <div>
+
             <label
               htmlFor="login-email"
               className="text-sm font-medium text-slate-700"
@@ -723,7 +855,7 @@ export default function Login() {
               className={field}
               type="email"
               autoComplete="username"
-              placeholder="Enter your email"
+              placeholder="staff@multicare.co.ke"
               value={email}
               onChange={(e) =>
                 setEmail(e.target.value)
@@ -731,10 +863,13 @@ export default function Login() {
               disabled={loading}
               required
             />
+
           </div>
 
           {/* Password */}
+
           <div>
+
             <label
               htmlFor="login-password"
               className="text-sm font-medium text-slate-700"
@@ -758,40 +893,49 @@ export default function Login() {
 
             <button
               type="button"
-              disabled={loading}
-              className="mt-1 text-xs text-hospital-800 underline hover:text-hospital-900 disabled:opacity-50"
+              className="mt-1 text-xs text-hospital-800 underline hover:text-hospital-900"
               onClick={() => {
-                setErr("");
+                setError("");
                 setShowForgot(true);
               }}
+              disabled={loading}
             >
               Forgot password?
             </button>
+
           </div>
 
-          {/* Login Button */}
+          {/* Submit */}
+
           <button
             type="submit"
             disabled={loading}
             className="w-full rounded-lg bg-hospital-800 py-2.5 font-medium text-white hover:bg-hospital-900 disabled:cursor-not-allowed disabled:opacity-50"
           >
             {loading
-              ? "Signing in..."
+              ? "Testing server..."
               : "Sign in"}
           </button>
+
         </form>
 
-        {/* Register */}
+        {/* Registration */}
+
         <p className="mt-6 text-center text-sm text-slate-600">
+
           New staff?{" "}
+
           <Link
             className="text-hospital-800 underline"
             to="/register"
           >
             Register
           </Link>
+
         </p>
+
       </div>
+
     </div>
   );
 }
